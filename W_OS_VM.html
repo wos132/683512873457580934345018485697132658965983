@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>W_OS VoltoMeter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background-color: #0d0d0d;
+      color: #00ff66;
+    }
+
+    header {
+      padding: 20px;
+      font-size: 32px;
+      font-weight: bold;
+      background-color: #111;
+      border-bottom: 2px solid #00ff66;
+      text-align: center;
+    }
+
+    .container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: calc(100vh - 80px);
+      position: relative;
+    }
+
+    canvas {
+      max-width: 400px;
+      max-height: 400px;
+    }
+
+    #voltageText {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #00ff66;
+      font-size: 40px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>W_OS VoltoMeter</header>
+  <div class="container">
+    <canvas id="gauge"></canvas>
+    <div id="voltageText">Ładowanie</div>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('gauge').getContext('2d');
+    const voltageDiv = document.getElementById('voltageText');
+
+    const gaugeChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        datasets: [{
+          data: [0, 24],
+          backgroundColor: ['#00ff66', '#1a1a1a'],
+          borderWidth: 0,
+          cutout: '75%'
+        }]
+      },
+      options: {
+        responsive: true,
+        rotation: -90,
+        circumference: 180,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+        },
+        animation: { duration: 0 } // wyłączamy domyślną animację
+      }
+    });
+
+    function animateGauge(targetValue, duration, callback) {
+      const startValue = gaugeChart.data.datasets[0].data[0];
+      const startTime = performance.now();
+
+      function animate(time) {
+        const elapsed = time - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        let value = startValue + (targetValue - startValue) * progress;
+        gaugeChart.data.datasets[0].data[0] = value;
+        gaugeChart.data.datasets[0].data[1] = 24 - value;
+        gaugeChart.update();
+        voltageDiv.textContent = 'Ładowanie';
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else if (callback) {
+          callback();
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function showFinalVoltage(finalVoltage) {
+      let startTime = performance.now();
+      const duration = 500; // szybki powrót do 0
+
+      function animateBack(time) {
+        const elapsed = time - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        let value = 24 * (1 - progress);
+        gaugeChart.data.datasets[0].data[0] = value;
+        gaugeChart.data.datasets[0].data[1] = 24 - value;
+        gaugeChart.update();
+        voltageDiv.textContent = 'Ładowanie';
+
+        if (progress < 1) {
+          requestAnimationFrame(animateBack);
+        } else {
+          // ustawienie na właściwą wartość z Blynk
+          gaugeChart.data.datasets[0].data[0] = finalVoltage;
+          gaugeChart.data.datasets[0].data[1] = 24 - finalVoltage;
+          gaugeChart.update();
+          voltageDiv.textContent = finalVoltage.toFixed(2) + ' V';
+        }
+      }
+      requestAnimationFrame(animateBack);
+    }
+
+    async function fetchVoltage(firstLoad = false) {
+      try {
+        const resp = await fetch("https://blynk.cloud/external/api/get?token=1jRmCxjrg7VeHcMK67_dt05PCmBzmPmm&V0");
+        const text = await resp.text();
+        const voltage = parseFloat(text);
+        if (!isNaN(voltage)) {
+          if(firstLoad && !localStorage.getItem('voltmeterAnimated')) {
+            animateGauge(24, 3000, () => showFinalVoltage(voltage));
+            localStorage.setItem('voltmeterAnimated', 'true');
+          } else {
+            gaugeChart.data.datasets[0].data[0] = voltage;
+            gaugeChart.data.datasets[0].data[1] = 24 - voltage;
+            gaugeChart.update();
+            voltageDiv.textContent = voltage.toFixed(2) + ' V';
+          }
+        }
+      } catch (err) {
+        console.error("Błąd pobierania z Blynk:", err);
+      }
+    }
+
+    // pierwsze odświeżenie strony
+    fetchVoltage(true);
+    // co 5s aktualizacja napięcia
+    setInterval(() => fetchVoltage(false), 5000);
+  </script>
+</body>
+</html>
