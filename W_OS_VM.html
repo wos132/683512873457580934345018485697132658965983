@@ -134,7 +134,7 @@
       try {
         const resp = await fetch("https://blynk.cloud/external/api/get?token=1jRmCxjrg7VeHcMK67_dt05PCmBzmPmm&V0");
         const text = await resp.text();
-        const voltage = parseFloat(text);
+        const voltage = parseFloat(text) + 0.40;
         if (!isNaN(voltage)) {
           if(firstLoad && !localStorage.getItem('voltmeterAnimated')) {
             animateGauge(24, 3000, () => showFinalVoltage(voltage));
